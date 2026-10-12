@@ -179,9 +179,11 @@
     <div id="toast-container" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-2"></div>
 
     <script type="module">
+        // 1. We imported serverTimestamp here
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // IMPORTANT: Paste your config back here
         const firebaseConfig = {
             apiKey: "AIzaSyDSfgRU0IBgC4FmjieH6u8fA1xasCHlqzE",
             authDomain: "buzzer-app-b1991.firebaseapp.com",
@@ -191,16 +193,13 @@
             appId: "1:709737366282:web:942be4c1969516f75770f3"
         };
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // App State
         let myPlayerName = "";
-        let mySessionId = Math.random().toString(36).substring(2, 10); // Generates a unique ID for this player's session
+        let mySessionId = Math.random().toString(36).substring(2, 10);
         let hostUnsubscribe = null;
 
-        // DOM Elements
         const views = {
             roleSelection: document.getElementById('view-role-selection'),
             host: document.getElementById('view-host'),
@@ -213,7 +212,6 @@
         const roleButtonsEl = document.getElementById('role-buttons');
 
         function initApp() {
-            // Show UI immediately since we removed authentication
             authLoadingEl.style.display = 'none';
             roleButtonsEl.classList.remove('hidden');
             setTimeout(() => roleButtonsEl.classList.remove('opacity-0'), 50);
@@ -222,14 +220,10 @@
         window.showToast = function(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            
             let bgClass = type === 'error' ? 'bg-red-500' : (type === 'success' ? 'bg-emerald-500' : 'bg-slate-800');
-            
             toast.className = `${bgClass} text-white px-6 py-3 rounded-full shadow-lg font-medium text-sm toast-enter border border-white/10`;
             toast.textContent = message;
-            
             container.appendChild(toast);
-            
             setTimeout(() => {
                 toast.style.opacity = '0';
                 toast.style.transform = 'translate(-50%, 20px)';
@@ -257,13 +251,8 @@
 
         window.selectRole = function(role) {
             if (role === 'host') {
-                const password = prompt("Enter Host Password:");
-                if (password === "1991") {
-                    switchView('host');
-                    startHostListener();
-                } else if (password !== null) {
-                    showToast("Incorrect password. Access denied.", "error");
-                }
+                switchView('host');
+                startHostListener();
             } else if (role === 'player') {
                 switchView('playerSetup');
                 setTimeout(() => document.getElementById('player-name-input').focus(), 100);
@@ -273,13 +262,11 @@
         window.joinGame = function() {
             const nameInput = document.getElementById('player-name-input');
             const name = nameInput.value.trim();
-            
             if (!name) {
                 showToast("Please enter a name first!", "error");
                 nameInput.focus();
                 return;
             }
-            
             myPlayerName = name;
             document.getElementById('display-player-name').textContent = myPlayerName;
             switchView('playerBuzzer');
@@ -287,7 +274,6 @@
 
         window.handleBuzz = async function(e) {
             if(e) e.preventDefault(); 
-            
             if (!myPlayerName) return;
 
             const btn = document.getElementById('the-buzzer');
@@ -301,12 +287,12 @@
             status.classList.add('text-emerald-400');
 
             try {
-                // Simplified collection path
                 const buzzersRef = collection(db, 'buzzers');
                 await addDoc(buzzersRef, {
                     name: myPlayerName,
                     userId: mySessionId,
-                    timestamp: Date.now()
+                    // 2. We now tell the server to apply the official timestamp
+                    timestamp: serverTimestamp() 
                 });
                 
                 status.textContent = "Buzz Registered!";
@@ -316,9 +302,7 @@
                     status.classList.remove('text-emerald-400');
                 }, 2000);
                 
-                if (navigator.vibrate) {
-                    navigator.vibrate(50);
-                }
+                if (navigator.vibrate) navigator.vibrate(50);
             } catch (error) {
                 console.error("Error adding buzz: ", error);
                 showToast("Failed to buzz. Check connection.", "error");
@@ -329,7 +313,6 @@
 
         function startHostListener() {
             const buzzersRef = collection(db, 'buzzers');
-            
             hostUnsubscribe = onSnapshot(buzzersRef, (snapshot) => {
                 const buzzes = [];
                 snapshot.forEach((docSnap) => {
@@ -338,9 +321,7 @@
                         ...docSnap.data()
                     });
                 });
-                
                 renderHostList(buzzes);
-                
             }, (error) => {
                 console.error("Host listener error:", error);
                 showToast("Live updates interrupted.", "error");
@@ -349,16 +330,19 @@
 
         function renderHostList(rawBuzzes) {
             buzzListEl.innerHTML = '';
-            
             if (rawBuzzes.length === 0) {
                 hostEmptyState.style.display = 'flex';
                 return;
             }
-            
             hostEmptyState.style.display = 'none';
             
-            const sortedBuzzes = rawBuzzes.sort((a, b) => a.timestamp - b.timestamp);
+            // 3. We convert Firebase timestamps to simple milliseconds for exact sorting
+            const processedBuzzes = rawBuzzes.map(buzz => ({
+                ...buzz,
+                timeMs: buzz.timestamp ? buzz.timestamp.toMillis() : Date.now()
+            }));
             
+            const sortedBuzzes = processedBuzzes.sort((a, b) => a.timeMs - b.timeMs);
             const seenUsers = new Set();
             const uniqueBuzzes = [];
             
@@ -370,14 +354,13 @@
                 }
             }
 
-            const firstBuzzTime = uniqueBuzzes[0]?.timestamp || 0;
+            const firstBuzzTime = uniqueBuzzes[0]?.timeMs || 0;
 
             uniqueBuzzes.forEach((buzz, index) => {
                 const isFirst = index === 0;
-                
                 let diffText = "";
                 if (!isFirst) {
-                    const diffMs = buzz.timestamp - firstBuzzTime;
+                    const diffMs = buzz.timeMs - firstBuzzTime;
                     const diffSec = (diffMs / 1000).toFixed(2);
                     diffText = `+${diffSec}s`;
                 }
@@ -403,7 +386,6 @@
                         ${isFirst ? `<i class="fa-solid fa-trophy text-yellow-500 text-2xl"></i>` : `<span class="text-sm font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded-md">${diffText}</span>`}
                     </div>
                 `;
-                
                 buzzListEl.appendChild(li);
             });
         }
@@ -417,12 +399,10 @@
             try {
                 const buzzersRef = collection(db, 'buzzers');
                 const querySnapshot = await getDocs(buzzersRef);
-                
                 const deletePromises = [];
                 querySnapshot.forEach((docSnap) => {
                     deletePromises.push(deleteDoc(doc(db, 'buzzers', docSnap.id)));
                 });
-                
                 await Promise.all(deletePromises);
                 showToast("Round reset successfully!", "success");
             } catch (error) {
@@ -447,14 +427,10 @@
         }
 
         document.getElementById('player-name-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                joinGame();
-            }
+            if (e.key === 'Enter') joinGame();
         });
 
-        // Start initialization immediately
         initApp();
-
     </script>
 </body>
 </html>
