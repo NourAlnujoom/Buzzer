@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QuickBuzz - Multiplayer Buzzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* slate-900 */
+            color: #f8fafc; /* slate-50 */
+            overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+        }
+        
+        .buzzer-btn {
+            background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%);
+            box-shadow: 0 20px 0 #7f1d1d, 0 30px 20px rgba(0,0,0,0.5);
+            transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .buzzer-btn:active, .buzzer-btn.simulated-active {
+            transform: translateY(15px) scale(0.98);
+            box-shadow: 0 5px 0 #7f1d1d, 0 10px 10px rgba(0,0,0,0.5);
+            background: radial-gradient(circle, #dc2626 0%, #991b1b 100%);
+        }
+
+        .gold-glow {
+            animation: pulse-gold 2s infinite;
+        }
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(234, 179, 8, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+        }
+
+        /* Hide scrollbar for lists but allow scroll */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Toast animation */
+        @keyframes slideUpFade {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .toast-enter {
+            animation: slideUpFade 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col">
+
+    <div id="view-role-selection" class="flex-1 flex flex-col items-center justify-center p-6 space-y-8 absolute inset-0 z-10 transition-opacity duration-300">
+        <div class="text-center space-y-2">
+            <div class="inline-block p-4 rounded-full bg-blue-500/20 text-blue-400 mb-4">
+                <i class="fa-solid fa-bolt text-5xl"></i>
+            </div>
+            <h1 class="text-5xl font-black tracking-tight bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">QuickBuzz</h1>
+            <p class="text-slate-400 text-lg">Who gets to answer first?</p>
+        </div>
+        
+        <div id="auth-loading" class="text-sm text-slate-500 animate-pulse flex items-center gap-2">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Connecting to servers...
+        </div>
+
+        <div id="role-buttons" class="w-full max-w-md space-y-4 hidden opacity-0 transition-opacity duration-500">
+            <button onclick="selectRole('host')" class="w-full group relative flex items-center justify-between p-6 bg-slate-800 hover:bg-slate-700 rounded-2xl border border-slate-700 transition-all overflow-hidden shadow-lg">
+                <div class="absolute inset-0 w-1/2 bg-gradient-to-r from-blue-600/20 to-transparent -translate-x-full group-hover:translate-x-0 transition-transform duration-300"></div>
+                <div class="flex items-center gap-4 relative z-10">
+                    <div class="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
+                        <i class="fa-solid fa-crown text-xl"></i>
+                    </div>
+                    <div class="text-left">
+                        <h3 class="font-bold text-xl text-white">I am the Host</h3>
+                        <p class="text-sm text-slate-400">Manage the game & see results</p>
+                    </div>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-white transition-colors relative z-10"></i>
+            </button>
+
+            <button onclick="selectRole('player')" class="w-full group relative flex items-center justify-between p-6 bg-slate-800 hover:bg-slate-700 rounded-2xl border border-slate-700 transition-all overflow-hidden shadow-lg">
+                <div class="absolute inset-0 w-1/2 bg-gradient-to-r from-emerald-600/20 to-transparent -translate-x-full group-hover:translate-x-0 transition-transform duration-300"></div>
+                <div class="flex items-center gap-4 relative z-10">
+                    <div class="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <i class="fa-solid fa-gamepad text-xl"></i>
+                    </div>
+                    <div class="text-left">
+                        <h3 class="font-bold text-xl text-white">I am a Player</h3>
+                        <p class="text-sm text-slate-400">Join and ring the bell</p>
+                    </div>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-500 group-hover:text-white transition-colors relative z-10"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="view-host" class="flex-1 flex flex-col hidden absolute inset-0 z-10 bg-slate-900">
+        <header class="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 backdrop-blur sticky top-0 z-20">
+            <div>
+                <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Host Dashboard</h2>
+                <p class="text-sm text-slate-400">Waiting for buzzes...</p>
+            </div>
+            <button onclick="resetBuzzers()" class="px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg font-semibold transition-colors flex items-center gap-2 border border-red-500/20">
+                <i class="fa-solid fa-rotate-right"></i> Reset Round
+            </button>
+        </header>
+        
+        <div class="flex-1 overflow-y-auto p-6 no-scrollbar relative">
+            <!-- Empty state -->
+            <div id="host-empty-state" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500">
+                <i class="fa-regular fa-bell-slash text-6xl mb-4 opacity-20"></i>
+                <p class="text-lg">No one has buzzed yet.</p>
+                <p class="text-sm opacity-60">Results will appear here instantly.</p>
+            </div>
+
+            <!-- List of buzzes -->
+            <ul id="buzz-list" class="space-y-4 relative z-10">
+                <!-- Dynamically populated -->
+            </ul>
+        </div>
+        <div class="p-4 border-t border-slate-800 text-center">
+            <button onclick="goHome()" class="text-sm text-slate-500 hover:text-white transition-colors">
+                <i class="fa-solid fa-arrow-left mr-1"></i> Exit Host Mode
+            </button>
+        </div>
+    </div>
+
+    <div id="view-player-setup" class="flex-1 flex flex-col items-center justify-center p-6 hidden absolute inset-0 z-10 bg-slate-900">
+        <button onclick="goHome()" class="absolute top-6 left-6 text-slate-400 hover:text-white w-10 h-10 flex items-center justify-center rounded-full bg-slate-800 transition-colors">
+            <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        
+        <div class="w-full max-w-sm space-y-8 bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl">
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+                    <i class="fa-solid fa-user-astronaut text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-white">Join the Game</h2>
+                <p class="text-slate-400 text-sm">Enter your name to start buzzing.</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <input type="text" id="player-name-input" placeholder="Your Name (e.g. Alex)" maxlength="20" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-lg font-semibold text-center">
+                </div>
+                <button onclick="joinGame()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-emerald-500/20 text-lg">
+                    Ready!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-player-buzzer" class="flex-1 flex flex-col hidden absolute inset-0 z-10 bg-slate-900">
+        <header class="p-6 flex justify-between items-center absolute top-0 left-0 right-0 pointer-events-none z-20">
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700 px-4 py-2 rounded-full pointer-events-auto shadow-lg flex items-center gap-2">
+                <i class="fa-solid fa-user text-emerald-400 text-sm"></i>
+                <span id="display-player-name" class="font-bold text-white text-sm">Player</span>
+            </div>
+            <button onclick="goHome()" class="pointer-events-auto w-10 h-10 bg-slate-800/80 backdrop-blur border border-slate-700 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors shadow-lg">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </button>
+        </header>
+
+        <div class="flex-1 flex items-center justify-center p-6 mt-12">
+            <!-- The Huge Buzzer -->
+            <button id="the-buzzer" onpointerdown="handleBuzz(event)" class="buzzer-btn w-64 h-64 sm:w-80 sm:h-80 rounded-full flex items-center justify-center relative cursor-pointer outline-none">
+                <div class="absolute inset-2 border-4 border-white/20 rounded-full pointer-events-none"></div>
+                <span class="text-white font-black text-5xl sm:text-6xl tracking-wider uppercase drop-shadow-lg pointer-events-none">Buzz</span>
+            </button>
+        </div>
+        
+        <div class="pb-10 text-center">
+            <p id="buzzer-status" class="text-slate-400 animate-pulse">Waiting for the question...</p>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-2"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDSfgRU0IBgC4FmjieH6u8fA1xasCHlqzE",
+            authDomain: "buzzer-app-b1991.firebaseapp.com",
+            projectId: "buzzer-app-b1991",
+            storageBucket: "buzzer-app-b1991.firebasestorage.app",
+            messagingSenderId: "709737366282",
+            appId: "1:709737366282:web:942be4c1969516f75770f3"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // App State
+        let currentUser = null;
+        let myPlayerName = "";
+        let hostUnsubscribe = null;
+        let isAuthenticating = true;
+
+        // DOM Elements
+        const views = {
+            roleSelection: document.getElementById('view-role-selection'),
+            host: document.getElementById('view-host'),
+            playerSetup: document.getElementById('view-player-setup'),
+            playerBuzzer: document.getElementById('view-player-buzzer')
+        };
+        const buzzListEl = document.getElementById('buzz-list');
+        const hostEmptyState = document.getElementById('host-empty-state');
+        const authLoadingEl = document.getElementById('auth-loading');
+        const roleButtonsEl = document.getElementById('role-buttons');
+
+        async function initAuth() {
+            try {
+                await signInAnonymously(auth);
+                currentUser = auth.currentUser;
+                
+                // Show UI after auth
+                isAuthenticating = false;
+                authLoadingEl.style.display = 'none';
+                roleButtonsEl.classList.remove('hidden');
+                // slight delay for smooth fade-in
+                setTimeout(() => roleButtonsEl.classList.remove('opacity-0'), 50);
+                
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                showToast("Failed to connect to server. Please refresh.", "error");
+                authLoadingEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-500"></i> Connection Failed`;
+            }
+        }
+
+        window.showToast = function(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = type === 'error' ? 'bg-red-500' : (type === 'success' ? 'bg-emerald-500' : 'bg-slate-800');
+            
+            toast.className = `${bgClass} text-white px-6 py-3 rounded-full shadow-lg font-medium text-sm toast-enter border border-white/10`;
+            toast.textContent = message;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, 20px)';
+                toast.style.transition = 'all 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function switchView(viewName) {
+            Object.values(views).forEach(v => {
+                if(v) v.classList.add('hidden');
+            });
+            if(views[viewName]) {
+                views[viewName].classList.remove('hidden');
+            }
+        }
+
+        window.goHome = function() {
+            if(hostUnsubscribe) {
+                hostUnsubscribe();
+                hostUnsubscribe = null;
+            }
+            switchView('roleSelection');
+        }
+
+        window.selectRole = function(role) {
+            if(isAuthenticating || !currentUser) {
+                showToast("Still connecting to server...", "error");
+                return;
+            }
+
+            if (role === 'host') {
+                switchView('host');
+                startHostListener();
+            } else if (role === 'player') {
+                switchView('playerSetup');
+                setTimeout(() => document.getElementById('player-name-input').focus(), 100);
+            }
+        }
+
+        window.joinGame = function() {
+            const nameInput = document.getElementById('player-name-input');
+            const name = nameInput.value.trim();
+            
+            if (!name) {
+                showToast("Please enter a name first!", "error");
+                nameInput.focus();
+                return;
+            }
+            
+            myPlayerName = name;
+            document.getElementById('display-player-name').textContent = myPlayerName;
+            switchView('playerBuzzer');
+        }
+
+        window.handleBuzz = async function(e) {
+            // Prevent default touch behaviors like zooming
+            if(e) e.preventDefault(); 
+            
+            if (!currentUser || !myPlayerName) return;
+
+            const btn = document.getElementById('the-buzzer');
+            const status = document.getElementById('buzzer-status');
+            
+            // Visual feedback via class toggle to override CSS active if triggered by touch
+            btn.classList.add('simulated-active');
+            setTimeout(() => btn.classList.remove('simulated-active'), 150);
+
+            // Give user immediate feedback
+            status.textContent = "Buzzed! Sending...";
+            status.classList.remove('animate-pulse');
+            status.classList.add('text-emerald-400');
+
+            try {
+                const buzzersRef = collection(db, 'artifacts', appId, 'public', 'data', 'buzzers');
+                await addDoc(buzzersRef, {
+                    name: myPlayerName,
+                    userId: currentUser.uid,
+                    timestamp: Date.now()
+                });
+                
+                status.textContent = "Buzz Registered!";
+                setTimeout(() => {
+                    status.textContent = "Waiting for the question...";
+                    status.classList.add('animate-pulse');
+                    status.classList.remove('text-emerald-400');
+                }, 2000);
+                
+                // Add a haptic feedback if available on the device
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            } catch (error) {
+                console.error("Error adding buzz: ", error);
+                showToast("Failed to buzz. Check connection.", "error");
+                status.textContent = "Error! Try again.";
+                status.classList.add('text-red-400');
+            }
+        }
+
+        function startHostListener() {
+            if (!currentUser) return;
+            
+            const buzzersRef = collection(db, 'artifacts', appId, 'public', 'data', 'buzzers');
+            
+            // Note: Adhering to rules, NOT using orderBy in Firestore query. 
+            // We fetch all from the collection and sort in memory.
+            hostUnsubscribe = onSnapshot(buzzersRef, (snapshot) => {
+                const buzzes = [];
+                snapshot.forEach((docSnap) => {
+                    buzzes.push({
+                        id: docSnap.id,
+                        ...docSnap.data()
+                    });
+                });
+                
+                renderHostList(buzzes);
+                
+            }, (error) => {
+                console.error("Host listener error:", error);
+                showToast("Live updates interrupted.", "error");
+            });
+        }
+
+        function renderHostList(rawBuzzes) {
+            buzzListEl.innerHTML = '';
+            
+            if (rawBuzzes.length === 0) {
+                hostEmptyState.style.display = 'flex';
+                return;
+            }
+            
+            hostEmptyState.style.display = 'none';
+            
+            // Sort in memory by timestamp (First to buzz at the top)
+            const sortedBuzzes = rawBuzzes.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // To prevent spam on the host screen, we'll only show each user's FIRST buzz for this round
+            const seenUsers = new Set();
+            const uniqueBuzzes = [];
+            
+            for (const buzz of sortedBuzzes) {
+                // Use a combination of userId and name as identifier since they might not be authenticated consistently across sessions in simple mode
+                const identifier = buzz.userId + "_" + buzz.name;
+                if (!seenUsers.has(identifier)) {
+                    seenUsers.add(identifier);
+                    uniqueBuzzes.push(buzz);
+                }
+            }
+
+            const firstBuzzTime = uniqueBuzzes[0]?.timestamp || 0;
+
+            uniqueBuzzes.forEach((buzz, index) => {
+                const isFirst = index === 0;
+                
+                // Calculate difference from first place
+                let diffText = "";
+                if (!isFirst) {
+                    const diffMs = buzz.timestamp - firstBuzzTime;
+                    const diffSec = (diffMs / 1000).toFixed(2);
+                    diffText = `+${diffSec}s`;
+                }
+
+                const li = document.createElement('li');
+                li.className = `p-5 rounded-2xl flex items-center justify-between shadow-sm transition-all border ${
+                    isFirst 
+                    ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/5 border-yellow-500/50 gold-glow transform scale-100 z-10' 
+                    : 'bg-slate-800 border-slate-700/50 hover:border-slate-600'
+                }`;
+                
+                li.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="${isFirst ? 'w-12 h-12 text-2xl bg-yellow-500 text-slate-900' : 'w-10 h-10 text-lg bg-slate-700 text-slate-400'} rounded-full flex items-center justify-center font-black shadow-inner">
+                            ${index + 1}
+                        </div>
+                        <div>
+                            <h3 class="${isFirst ? 'text-2xl font-black text-yellow-500' : 'text-xl font-bold text-white'} tracking-tight">${escapeHTML(buzz.name)}</h3>
+                            ${isFirst ? '<p class="text-xs text-yellow-500/80 font-semibold uppercase tracking-wider">Fastest Finger</p>' : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        ${isFirst ? `<i class="fa-solid fa-trophy text-yellow-500 text-2xl"></i>` : `<span class="text-sm font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded-md">${diffText}</span>`}
+                    </div>
+                `;
+                
+                buzzListEl.appendChild(li);
+            });
+        }
+
+        window.resetBuzzers = async function() {
+            if (!currentUser) return;
+            
+            const btn = document.querySelector('button[onclick="resetBuzzers()"]');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Resetting...`;
+            btn.disabled = true;
+
+            try {
+                // Fetch all documents in the collection
+                const buzzersRef = collection(db, 'artifacts', appId, 'public', 'data', 'buzzers');
+                const querySnapshot = await getDocs(buzzersRef);
+                
+                // Delete them one by one
+                const deletePromises = [];
+                querySnapshot.forEach((docSnap) => {
+                    deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'buzzers', docSnap.id)));
+                });
+                
+                await Promise.all(deletePromises);
+                showToast("Round reset successfully!", "success");
+            } catch (error) {
+                console.error("Error resetting buzzers:", error);
+                showToast("Failed to reset. Please try again.", "error");
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        }
+        
+        // Helper to prevent XSS in names
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        // Handle Enter key on name input
+        document.getElementById('player-name-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                joinGame();
+            }
+        });
+
+        // Start initialization
+        initAuth();
+
+    </script>
+</body>
+</html>
