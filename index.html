@@ -257,8 +257,13 @@
 
         window.selectRole = function(role) {
             if (role === 'host') {
-                switchView('host');
-                startHostListener();
+                const password = prompt("Enter Host Password:");
+                if (password === "1991") {
+                    switchView('host');
+                    startHostListener();
+                } else if (password !== null) {
+                    showToast("Incorrect password. Access denied.", "error");
+                }
             } else if (role === 'player') {
                 switchView('playerSetup');
                 setTimeout(() => document.getElementById('player-name-input').focus(), 100);
